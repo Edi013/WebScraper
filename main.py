@@ -2,9 +2,12 @@ import requests
 from bs4 import BeautifulSoup
 import psycopg2
 from psycopg2 import sql
+import keyboard
+
 
 scraped_links_table_name = 'scraped_links3'
 to_scrape_links_table_name = 'to_scrap_links'
+
 
 def scrape_page(url):
     headers = {
@@ -13,24 +16,29 @@ def scrape_page(url):
 
     try:
         # Try to send a request to the URL
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=0.5)
 
         # Check if the request was successful
         if response.status_code == 200:
             # Decode with error handling
             content = response.content.decode('utf-8', errors='replace')
-            soup = BeautifulSoup(content, 'lxml')
+
+            content_type = response.headers.get('Content-Type', '')
+            if 'xml' in content_type or 'xhtml' in content_type:
+                soup = BeautifulSoup(content, features="xml")  # Use XML parser
+            else:
+                soup = BeautifulSoup(content, 'lxml')
 
             # Extract all anchor tags with links
             links = []
             for link in soup.find_all('a', href=True):
                 href = link['href']
-                # Check for both HTTP and HTTPS
-                if (href.startswith("http://") or href.startswith("https://") or href.startswith("www")) and '../' not in href:
+                if (href.startswith("http://") or href.startswith("https://") or href.startswith("www")) and '../' not in href\
+                        and '..' not in href and (href.count('.com') < 1):
                     links.append(href)
                 else:
-                    # Convert relative URL to absolute URL if needed
-                    links.append(url + href)
+                    print(f"This link is not included: {link}")
+                    continue
 
             return links
         else:
@@ -67,9 +75,21 @@ def get_links(cursor, table_name):
         cursor.execute(select_query)
 
         links = cursor.fetchall()
-        return set([link[1] for link in links])
+        return set([link[0] for link in links])
     except Exception as e:
         print(f"Error getting links: {e}")
+
+def delete_to_scrape_links(cursor, links, table_name):
+    try:
+        delete_query = sql.SQL("DELETE FROM {} WHERE link IN ({});").format(
+            sql.Identifier(table_name),
+            sql.SQL(',').join(sql.Placeholder() * len(links))
+        )
+
+        cursor.execute(delete_query, links)
+        return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error inserting links: {e}")
 
 
 if __name__ == "__main__":
@@ -87,23 +107,37 @@ if __name__ == "__main__":
         print("Connected to the database.")
 
         to_scrape: set[str] = get_links(cursor, to_scrape_links_table_name)
+        scraped_links_to_delete_from_database = []
         #to_scrape.add({'https://about.google/'}) #"http://inf.ucv.ro/"
         scraped_links: set[str] = set()
         while to_scrape:
+            if keyboard.is_pressed('esc'):
+                print("ESC key pressed. Stopping the program...")
+                insert_links(cursor, list(to_scrape), to_scrape_links_table_name)
+                conn.commit()
+                print(f"Inserted {len(to_scrape)} links able to be scraped into the database.")
+                print("The program stopped correctly 1/2.")
+                delete_result = delete_to_scrape_links(cursor, scraped_links_to_delete_from_database, to_scrape_links_table_name)
+                conn.commit()
+                print('Deleted used rows from retrieved ones. ' + "The program stopped correctly 2/2." ) if delete_result else print('NOT deleted used rows from retrieved ones.' + "The program didn't stop correctly 2nd/2 step.")
+                break
+
             current_url = to_scrape.pop()
+            scraped_links_to_delete_from_database.append(current_url)
+
             result = scrape_page(current_url)
 
-            new_links = set()
+            new_links_scraped = set()
             for link in result:
-                if link not in scraped_links:
+                if link not in scraped_links and link not in to_scrape:
                     to_scrape.add(link)
                     scraped_links.add(link)
-                    new_links.add(link)
+                    new_links_scraped.add(link)
 
-            if new_links:
-                insert_links(cursor, new_links, scraped_links_table_name)
+            if new_links_scraped:
+                insert_links(cursor, new_links_scraped, scraped_links_table_name)
                 conn.commit()
-                print(f"Inserted {len(new_links)} new links into the database.")
+                print(f"Inserted {len(new_links_scraped)} scraped links into the database.")
 
                 insert_links(cursor, list(to_scrape), to_scrape_links_table_name)
                 conn.commit()
@@ -111,9 +145,6 @@ if __name__ == "__main__":
 
             print('To scrape ' + str(len(to_scrape)))
             print('Scrapped '+ str(len(scraped_links)))
-
-        for idx, link in enumerate(scraped_links):
-            print(f"{idx + 1}. {link}")
         print("ENDED ------------------")
     except psycopg2.Error as e:
         print(f"Database Error: {e}")
