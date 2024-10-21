@@ -16,7 +16,7 @@ def scrape_page(url):
 
     try:
         # Try to send a request to the URL
-        response = requests.get(url, headers=headers, timeout=0.5)
+        response = requests.get(url, headers=headers, timeout=1)
 
         # Check if the request was successful
         if response.status_code == 200:
@@ -37,7 +37,7 @@ def scrape_page(url):
                         and '..' not in href and (href.count('.com') < 1):
                     links.append(href)
                 else:
-                    print(f"This link is not included: {link}")
+                    #print(f"This link is not included: {link}")
                     continue
 
             return links
@@ -89,12 +89,32 @@ def delete_to_scrape_links(cursor, links, table_name):
         cursor.execute(delete_query, links)
         return cursor.rowcount > 0
     except Exception as e:
-        print(f"Error inserting links: {e}")
+        print(f"Error deleting links: {e}")
+
+def delete_to_scrape_link(cursor, link, table_name):
+    try:
+        delete_query = sql.SQL("DELETE FROM {} WHERE link = %s;").format(
+            sql.Identifier(table_name)
+        )
+        cursor.execute(delete_query, (link,))
+
+        if cursor.rowcount > 0:
+            print(f"Successfully deleted link: {link}")
+            return True
+        else:
+            print(f"No link found to delete: {link}")
+            return False
+    except Exception as e:
+        print(f"Error deleting link: {e}")
+        return False
 
 
 if __name__ == "__main__":
     conn = None
     cursor = None
+    to_scrape: set[str] = set()
+    scraped_links_to_delete_from_database: list = []
+    scraped_links: set[str] = set()
     try:
         conn = psycopg2.connect(
             dbname="WebScrapper",
@@ -106,25 +126,21 @@ if __name__ == "__main__":
         cursor = conn.cursor()
         print("Connected to the database.")
 
-        to_scrape: set[str] = get_links(cursor, to_scrape_links_table_name)
-        scraped_links_to_delete_from_database = []
-        #to_scrape.add({'https://about.google/'}) #"http://inf.ucv.ro/"
-        scraped_links: set[str] = set()
+        to_scrape = get_links(cursor, to_scrape_links_table_name)
         while to_scrape:
             if keyboard.is_pressed('esc'):
                 print("ESC key pressed. Stopping the program...")
                 insert_links(cursor, list(to_scrape), to_scrape_links_table_name)
                 conn.commit()
                 print(f"Inserted {len(to_scrape)} links able to be scraped into the database.")
-                print("The program stopped correctly 1/2.")
-                delete_result = delete_to_scrape_links(cursor, scraped_links_to_delete_from_database, to_scrape_links_table_name)
-                conn.commit()
-                print('Deleted used rows from retrieved ones. ' + "The program stopped correctly 2/2." ) if delete_result else print('NOT deleted used rows from retrieved ones.' + "The program didn't stop correctly 2nd/2 step.")
+                print("The program stopped correctly 1/1.")
+                # delete_result = delete_to_scrape_links(cursor, scraped_links_to_delete_from_database, to_scrape_links_table_name)
+                # conn.commit()
+                # print('Deleted used rows from retrieved ones. ' + "The program stopped correctly 2/2." ) if delete_result else print('NOT deleted used rows from retrieved ones.' + "The program didn't stop correctly 2nd/2 step.")
                 break
 
             current_url = to_scrape.pop()
-            scraped_links_to_delete_from_database.append(current_url)
-
+            # scraped_links_to_delete_from_database.append(current_url)
             result = scrape_page(current_url)
 
             new_links_scraped = set()
@@ -145,6 +161,9 @@ if __name__ == "__main__":
 
             print('To scrape ' + str(len(to_scrape)))
             print('Scrapped '+ str(len(scraped_links)))
+
+            delete_to_scrape_link(cursor, current_url, to_scrape_links_table_name)
+            conn.commit()
         print("ENDED ------------------")
     except psycopg2.Error as e:
         print(f"Database Error: {e}")
