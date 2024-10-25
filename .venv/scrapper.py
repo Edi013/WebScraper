@@ -17,10 +17,14 @@ def scrape_page(url, cursor):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
 
+    archive_extensions = ('.zip', '.tar.gz', '.tar', '.gz', '.rar', '.7z')
+
     try:
+        if url.endswith(archive_extensions):
+            print(f"Skipping archive file: {url}")
+            return []  # Skip the processing for this URL
+
         response = requests.get(url, headers=headers, timeout=1)
-
-
         if response.status_code == 200:
             content = response.content.decode('utf-8', errors='replace')
 
@@ -46,12 +50,12 @@ def scrape_page(url, cursor):
 
     except requests.exceptions.ConnectionError:
         print(f"Error: Failed to connect to {url}. The site may be down.")
-        handle_unreached_link(cursor, current_url)
+        handle_unreached_link(cursor, url)
         return []
 
     except requests.exceptions.Timeout:
         print(f"Error: Timeout occurred while trying to reach {url}.")
-        handle_unreached_link(cursor, current_url)
+        handle_unreached_link(cursor, url)
         return []
 
     except requests.exceptions.RequestException as e:
@@ -130,15 +134,16 @@ def connect_to_postgresql():
     print("Connected to the database.")
     return conn
 
-def initiate_exit():
+def initiate_exit(fast_exit):
     global exit_initiated
-    print("ESC key pressed. Stopping the program...")
-    # affected_rows = insert_links(cursor, target_links, target_links_table_name)
-    # if affected_rows:
-    #     conn.commit()
-    affected_rows = 2
-    print(f"In memory links list syncronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
     exit_initiated = True
+    print("ESC key pressed. Stopping the program...")
+    if not fast_exit:
+        affected_rows = insert_links(cursor, target_links, target_links_table_name)
+        if affected_rows:
+            conn.commit()
+        print(f"In memory links list syncronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
+
 
 if __name__ == "__main__":
     conn = None
@@ -166,11 +171,11 @@ if __name__ == "__main__":
             print('New scrapped links: '+ str(len(new_links_scraped)))
 
             if delete_links(cursor, current_url, target_links_table_name):
-                print(f"Deleted scraped url completed.: {current_url}")
+                print(f"Deleted scraped url completed: {current_url}")
             conn.commit()
 
             if keyboard.is_pressed('esc'):
-                initiate_exit()
+                initiate_exit(fast_exit=True)
     except psycopg2.Error as e:
         print(f"Database Error: {e}")
     except Exception as e:
