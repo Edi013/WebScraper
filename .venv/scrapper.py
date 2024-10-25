@@ -1,25 +1,25 @@
-from xmlrpc.client import boolean
-
 import requests
 from bs4 import BeautifulSoup
 import psycopg2
-# from lxml.xslt import message
 from psycopg2 import sql
 import keyboard
-
+from collections.abc import Iterable
 
 result_links_table_name = 'result_links'
 target_links_table_name = 'target_links'
-correctlyStoppedMessage = "The program stopped correctly with 1/1 required actions."
-correctlySoppedValue = False
+unreached_links_table_name = 'unreached_links'
 
-def scrape_page(url):
+correctlyStoppedMessage = "The program stopped correctly with 1/1 required actions."
+exit_initiated = False
+
+def scrape_page(url, cursor):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
 
     try:
         response = requests.get(url, headers=headers, timeout=1)
+
 
         if response.status_code == 200:
             content = response.content.decode('utf-8', errors='replace')
@@ -50,6 +50,7 @@ def scrape_page(url):
 
     except requests.exceptions.Timeout:
         print(f"Error: Timeout occurred while trying to reach {url}.")
+        handle_unreached_link(cursor, current_url)
         return []
 
     except requests.exceptions.RequestException as e:
@@ -60,14 +61,27 @@ def scrape_page(url):
         print(f"Unexpected error while scraping {url}: {e}")
         return []
 
+def handle_unreached_link(cursor, current_url):
+    insert_links(cursor, current_url, unreached_links_table_name)
+    delete_links(cursor, current_url, target_links_table_name)
+    conn.commit()
+
 # generic method to insert data into a table within given table architecture constraints : contanins link column.
 def insert_links(cursor, links, table_name):
     try:
+        if isinstance(links, str):
+            links = [links]
+
+        if not isinstance(links, Iterable):
+            raise TypeError("Inserting supports only iterable types.")
+
         insert_query = (sql.SQL("INSERT INTO {} (link) VALUES (%s) ON CONFLICT (link) DO NOTHING;")
-        .format(sql.Identifier(table_name)))
+                        .format(sql.Identifier(table_name)))
         cursor.executemany(insert_query, [(link,) for link in links])
-    except Exception as e:
+    except (TypeError, Exception) as e:
         print(f"Error inserting links: {e}")
+    finally:
+        return cursor.rowcount > 0
 
 # generic method to get data into a table within given table architecture constraints : contanins link column.
 def get_links(cursor, table_name):
@@ -81,35 +95,28 @@ def get_links(cursor, table_name):
         print(f"Error getting links: {e}")
 
 # generic method to delete data into a table within given table architecture constraints : contanins link column.
-def delete_to_scrape_links(cursor, links, table_name):
+def delete_links(cursor, links, table_name):
     try:
+        if isinstance(links, str):
+            delete_query = sql.SQL("DELETE FROM {} WHERE link = %s;").format(
+                sql.Identifier(table_name)
+            )
+            cursor.execute(delete_query, (links,))
+            return cursor.rowcount > 0
+
+        if not isinstance(links, Iterable):
+            raise TypeError("Inserting supports only iterable types.")
+
         delete_query = sql.SQL("DELETE FROM {} WHERE link IN ({});").format(
             sql.Identifier(table_name),
             sql.SQL(',').join(sql.Placeholder() * len(links))
         )
+        cursor.executemany(delete_query, links)
 
-        cursor.execute(delete_query, links)
-        return cursor.rowcount > 0
-    except Exception as e:
+    except (TypeError, Exception) as e:
         print(f"Error deleting links: {e}")
-
-# generic method to delete data into a table within given table architecture constraints : contanins link column.
-def delete_to_scrape_link(cursor, link, table_name):
-    try:
-        delete_query = sql.SQL("DELETE FROM {} WHERE link = %s;").format(
-            sql.Identifier(table_name)
-        )
-        cursor.execute(delete_query, (link,))
-
-        if cursor.rowcount > 0:
-            print(f"Successfully deleted link: {link}")
-            return True
-        else:
-            print(f"No link found to delete: {link}")
-            return False
-    except Exception as e:
-        print(f"Error deleting link: {e}")
-        return False
+    finally:
+        return cursor.rowcount > 0
 
 def connect_to_postgresql():
     conn = psycopg2.connect(
@@ -122,6 +129,14 @@ def connect_to_postgresql():
     print("Connected to the database.")
     return conn
 
+def initiate_exit():
+    print("ESC key pressed. Stopping the program...")
+    if insert_links(cursor, target_links, target_links_table_name):
+        print(f"In memory links list syncronized with db."
+              f"Rows added{affected_rows}, links number: {len(target_links)}.")
+        conn.commit()
+    exit_initiated = True
+
 if __name__ == "__main__":
     conn = None
     cursor = None
@@ -129,20 +144,12 @@ if __name__ == "__main__":
     try:
         conn = connect_to_postgresql()
         cursor = conn.cursor()
-
         target_links = get_links(cursor, target_links_table_name)
-        while target_links:
-            if keyboard.is_pressed('esc'):
-                print("ESC key pressed. Stopping the program...")
-                insert_links(cursor, list(target_links), target_links_table_name)
-                conn.commit()
-                print(f"In memory links list syncronized with db, links number: {len(target_links)}.")
-                correctlySoppedValue = True
-                break
 
+        while target_links and not exit_initiated:
             current_url = target_links.pop()
             print(f"Scrapping current url: {current_url}")
-            result = scrape_page(current_url)
+            result = scrape_page(current_url, cursor)
 
             new_links_scraped = set()
             for link in result:
@@ -153,14 +160,14 @@ if __name__ == "__main__":
             if new_links_scraped:
                 insert_links(cursor, new_links_scraped, result_links_table_name)
                 insert_links(cursor, new_links_scraped, target_links_table_name)
-                delete_to_scrape_link(cursor, current_url, target_links_table_name)
-                conn.commit()
-                print(f"Inserted {len(new_links_scraped)} scraped links into the database ( both in target column and scrapped column.")
-                print(f"Deleted scraped url: {current_url}")
-                current_url = ""
-
             print('New scrapped links: '+ str(len(new_links_scraped)))
-            print('Total amount of target links available: ' + str(len(target_links)))
+
+            if delete_links(cursor, current_url, target_links_table_name):
+                print(f"Deleted scraped url completed.: {current_url}")
+            conn.commit()
+
+            if keyboard.is_pressed('esc'):
+                initiate_exit()
     except psycopg2.Error as e:
         print(f"Database Error: {e}")
     except Exception as e:
@@ -173,8 +180,8 @@ if __name__ == "__main__":
             conn.close()
             print("Database connection closed.")
 
-        print("Prgoram stopped correctly: " + correctlySoppedValue)
-        if(correctlySoppedValue):
+        print(f"Program stopped correctly: {exit_initiated}")
+        if(exit_initiated):
             print(correctlyStoppedMessage)
 
 # trebuie sa gestionam daca link ul intra pe timeout, trb sters sau nu ?
