@@ -1,3 +1,6 @@
+import multiprocessing
+import os
+
 import requests
 from bs4 import BeautifulSoup
 import psycopg2
@@ -12,7 +15,7 @@ unreached_links_table_name = 'unreached_links'
 correctlyStoppedMessage = "The program stopped correctly with 1/1 required actions."
 exit_initiated = False
 
-def scrape_page(url, cursor):
+def scrape_page(url, db_cursor, conn):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
     }
@@ -35,8 +38,8 @@ def scrape_page(url, cursor):
                 soup = BeautifulSoup(content, 'lxml')
 
             links = []
-            for link in soup.find_all('a', href=True):
-                href = link['href']
+            for tag in soup.find_all('a', href=True):
+                href = tag['href']
                 if (href.startswith("http://") or href.startswith("https://") or href.startswith("www")) and '../' not in href\
                         and '..' not in href and (href.count('.com') < 1):
                     links.append(href)
@@ -50,12 +53,12 @@ def scrape_page(url, cursor):
 
     except requests.exceptions.ConnectionError:
         print(f"Error: Failed to connect to {url}. The site may be down.")
-        handle_unreached_link(cursor, url)
+        handle_unreached_link(db_cursor, url, conn)
         return []
 
     except requests.exceptions.Timeout:
         print(f"Error: Timeout occurred while trying to reach {url}.")
-        handle_unreached_link(cursor, url)
+        handle_unreached_link(db_cursor, url, conn)
         return []
 
     except requests.exceptions.RequestException as e:
@@ -66,7 +69,8 @@ def scrape_page(url, cursor):
         print(f"Unexpected error while scraping {url}: {e}")
         return []
 
-def handle_unreached_link(cursor, current_url):
+
+def handle_unreached_link(cursor, current_url, conn):
     if insert_links(cursor, current_url, unreached_links_table_name):
         conn.commit()
         print(f"Unreached url stored: {current_url}")
@@ -134,7 +138,7 @@ def connect_to_postgresql():
     print("Connected to the database.")
     return conn
 
-def initiate_exit(fast_exit):
+def initiate_exit(cursor, target_links, conn, fast_exit=True):
     global exit_initiated
     exit_initiated = True
     print("ESC key pressed. Stopping the program...")
@@ -144,8 +148,7 @@ def initiate_exit(fast_exit):
             conn.commit()
         print(f"In memory links list syncronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
 
-
-if __name__ == "__main__":
+def scraping_process():
     conn = None
     cursor = None
     target_links: set[str] = set()
@@ -155,9 +158,11 @@ if __name__ == "__main__":
         target_links = get_links(cursor, target_links_table_name)
 
         while target_links and not exit_initiated:
+            pid = os.getpid()
+            print(f"Process ID: {pid}")
             current_url = target_links.pop()
             print(f"Scrapping current url: {current_url}")
-            result = scrape_page(current_url, cursor)
+            result = scrape_page(current_url, cursor, conn)
 
             new_links_scraped = set()
             for link in result:
@@ -168,14 +173,14 @@ if __name__ == "__main__":
             if new_links_scraped:
                 insert_links(cursor, new_links_scraped, result_links_table_name)
                 insert_links(cursor, new_links_scraped, target_links_table_name)
-            print('New scrapped links: '+ str(len(new_links_scraped)))
+            print('New scrapped links: ' + str(len(new_links_scraped)))
 
             if delete_links(cursor, current_url, target_links_table_name):
                 print(f"Deleted scraped url completed: {current_url}")
             conn.commit()
 
             if keyboard.is_pressed('esc'):
-                initiate_exit(fast_exit=True)
+                initiate_exit(cursor, target_links, conn)
     except psycopg2.Error as e:
         print(f"Database Error: {e}")
     except Exception as e:
@@ -189,7 +194,20 @@ if __name__ == "__main__":
             print("Database connection closed.")
 
         print(f"Program stopped correctly: {exit_initiated}")
-        if(exit_initiated):
+        if exit_initiated:
             print(correctlyStoppedMessage)
+        print("---Scraper process ended---")
 
-# trebuie sa gestionam daca link ul intra pe timeout, trb sters sau nu ?
+if __name__ == "__main__":
+    num_processes = 2
+    processes = []
+
+    for _ in range(num_processes):
+        process = multiprocessing.Process(target=scraping_process)
+        process.start()
+        processes.append(process)
+
+    for process in processes:
+        process.join()  # Wait for all processes to complete
+
+    print("All processes have completed.")
