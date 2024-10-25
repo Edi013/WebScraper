@@ -5,7 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="66d73aa7-b5dc-425a-877b-b5ff2f60dab1" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.venv/scrapper.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -122,7 +122,7 @@
       <updated>1729494495264</updated>
       <workItem from="1729494497766" duration="6520000" />
       <workItem from="1729519324672" duration="18864000" />
-      <workItem from="1729848909512" duration="5541000" />
+      <workItem from="1729848909512" duration="5841000" />
     </task>
     <servers />
   </component>
