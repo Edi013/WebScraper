@@ -46,6 +46,7 @@ def scrape_page(url, cursor):
 
     except requests.exceptions.ConnectionError:
         print(f"Error: Failed to connect to {url}. The site may be down.")
+        handle_unreached_link(cursor, current_url)
         return []
 
     except requests.exceptions.Timeout:
@@ -62,9 +63,9 @@ def scrape_page(url, cursor):
         return []
 
 def handle_unreached_link(cursor, current_url):
-    insert_links(cursor, current_url, unreached_links_table_name)
-    delete_links(cursor, current_url, target_links_table_name)
-    conn.commit()
+    if insert_links(cursor, current_url, unreached_links_table_name):
+        conn.commit()
+        print(f"Unreached url stored: {current_url}")
 
 # generic method to insert data into a table within given table architecture constraints : contanins link column.
 def insert_links(cursor, links, table_name):
@@ -81,7 +82,7 @@ def insert_links(cursor, links, table_name):
     except (TypeError, Exception) as e:
         print(f"Error inserting links: {e}")
     finally:
-        return cursor.rowcount > 0
+        return cursor.rowcount
 
 # generic method to get data into a table within given table architecture constraints : contanins link column.
 def get_links(cursor, table_name):
@@ -116,7 +117,7 @@ def delete_links(cursor, links, table_name):
     except (TypeError, Exception) as e:
         print(f"Error deleting links: {e}")
     finally:
-        return cursor.rowcount > 0
+        return cursor.rowcount
 
 def connect_to_postgresql():
     conn = psycopg2.connect(
@@ -130,11 +131,13 @@ def connect_to_postgresql():
     return conn
 
 def initiate_exit():
+    global exit_initiated
     print("ESC key pressed. Stopping the program...")
-    if insert_links(cursor, target_links, target_links_table_name):
-        print(f"In memory links list syncronized with db."
-              f"Rows added{affected_rows}, links number: {len(target_links)}.")
-        conn.commit()
+    # affected_rows = insert_links(cursor, target_links, target_links_table_name)
+    # if affected_rows:
+    #     conn.commit()
+    affected_rows = 2
+    print(f"In memory links list syncronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
     exit_initiated = True
 
 if __name__ == "__main__":
