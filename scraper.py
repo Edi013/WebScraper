@@ -69,13 +69,7 @@ def scrape_page(url, db_cursor, conn):
         print(f"Unexpected error while scraping {url}: {e}")
         return []
 
-
-def handle_unreached_link(cursor, current_url, conn):
-    if insert_links(cursor, current_url, unreached_links_table_name):
-        conn.commit()
-        print(f"Unreached url stored: {current_url}")
-
-# generic method to insert data into a table within given table architecture constraints : contanins link column.
+# generic method to insert data into a table within given table architecture constraints : contains link column.
 def insert_links(cursor, links, table_name):
     try:
         if isinstance(links, str):
@@ -92,7 +86,7 @@ def insert_links(cursor, links, table_name):
     finally:
         return cursor.rowcount
 
-# generic method to get data into a table within given table architecture constraints : contanins link column.
+# generic method to get data into a table within given table architecture constraints : contains link column.
 def get_links(cursor, table_name):
     try:
         select_query = sql.SQL("SELECT link FROM {}").format(sql.Identifier(table_name))
@@ -103,7 +97,7 @@ def get_links(cursor, table_name):
     except Exception as e:
         print(f"Error getting links: {e}")
 
-# generic method to delete data into a table within given table architecture constraints : contanins link column.
+# generic method to delete data into a table within given table architecture constraints : contains link column.
 def delete_links(cursor, links, table_name):
     try:
         if isinstance(links, str):
@@ -137,6 +131,11 @@ def connect_to_postgresql():
     )
     print("Connected to the database.")
     return conn
+
+def handle_unreached_link(cursor, current_url, conn):
+    if insert_links(cursor, current_url, unreached_links_table_name):
+        conn.commit()
+        print(f"Unreached url stored: {current_url}")
 
 def initiate_exit(cursor, target_links, conn, fast_exit=True):
     global exit_initiated
