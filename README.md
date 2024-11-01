@@ -62,3 +62,8 @@ CREATE TABLE unreached_links (
 2. **Set up the database and configure the connection**.
 3. **Run the script and enjoy.**
 
+## Stopping the Program
+To exit the program, hold the "ESC" key until every process is stopped.
+
+- **Quick Exit**: For a fast exit with 99.99% data accuracy, set `True` the FAST_EXIT parameter.
+- **Slower Exit**: For a slow shutdown with 100% data accuracy, set `False` the FAST_EXIT parameter.
