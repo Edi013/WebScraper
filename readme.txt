@@ -53,12 +53,13 @@ CREATE TABLE unreached_links (
     id SERIAL PRIMARY KEY,
     link TEXT UNIQUE
 );
-
+```
 
 ## Usage
 1. **Install dependencies**: Make sure you have all required libraries installed. Use the following command:
-   ```bash
+```bash
    pip install requests beautifulsoup4 psycopg2 keyboard
+```
 2. **Set up the database and configure the connection**.
 3. **Run the script and enjoy.**
 
