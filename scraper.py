@@ -14,6 +14,7 @@ unreached_links_table_name = 'unreached_links'
 
 correctlyStoppedMessage = "The program stopped correctly with 1/1 required actions."
 exit_initiated = False
+FAST_EXIT = True
 
 def scrape_page(url, db_cursor, conn):
     headers = {
@@ -69,7 +70,6 @@ def scrape_page(url, db_cursor, conn):
         print(f"Unexpected error while scraping {url}: {e}")
         return []
 
-# generic method to insert data into a table within given table architecture constraints : contains link column.
 def insert_links(cursor, links, table_name):
     try:
         if isinstance(links, str):
@@ -86,7 +86,6 @@ def insert_links(cursor, links, table_name):
     finally:
         return cursor.rowcount
 
-# generic method to get data into a table within given table architecture constraints : contains link column.
 def get_links(cursor, table_name):
     try:
         select_query = sql.SQL("SELECT link FROM {}").format(sql.Identifier(table_name))
@@ -97,7 +96,6 @@ def get_links(cursor, table_name):
     except Exception as e:
         print(f"Error getting links: {e}")
 
-# generic method to delete data into a table within given table architecture constraints : contains link column.
 def delete_links(cursor, links, table_name):
     try:
         if isinstance(links, str):
@@ -137,15 +135,15 @@ def handle_unreached_link(cursor, current_url, conn):
         conn.commit()
         print(f"Unreached url stored: {current_url}")
 
-def initiate_exit(cursor, target_links, conn, fast_exit=True):
-    global exit_initiated
+def initiate_exit(cursor, target_links, conn):
+    global exit_initiated, FAST_EXIT
     exit_initiated = True
     print("ESC key pressed. Stopping the program...")
-    if not fast_exit:
+    if not FAST_EXIT:
         affected_rows = insert_links(cursor, target_links, target_links_table_name)
         if affected_rows:
             conn.commit()
-        print(f"In memory links list syncronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
+        print(f"In memory links list synchronized with db. Rows added: {affected_rows}, links number: {len(target_links)}.")
 
 def scraping_process():
     conn = None
