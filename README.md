@@ -1,7 +1,6 @@
 # Web Scraper
 
-## Project Objective
-This script is designed to scrape web pages using Chrome for URLs and store the data in a PostgreSQL database.
+This script is designed to scrape web pages for URLs and store the data in a PostgreSQL database.
 
 ## Table of Contents
 - [Features](#features)
