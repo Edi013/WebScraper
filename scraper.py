@@ -11,6 +11,7 @@ from collections.abc import Iterable
 result_links_table_name = 'result_links'
 target_links_table_name = 'target_links'
 unreached_links_table_name = 'unreached_links'
+initial_link = 'http://inf.ucv.ro/'
 
 correctlyStoppedMessage = "The program stopped correctly with 1/1 required actions."
 exit_initiated = False
@@ -121,7 +122,7 @@ def delete_links(cursor, links, table_name):
 
 def connect_to_postgresql():
     conn = psycopg2.connect(
-        dbname="WebScrapper",
+        dbname="ScraperDb",
         user="postgres",
         password="1234",
         host="localhost",
@@ -153,6 +154,7 @@ def scraping_process():
         conn = connect_to_postgresql()
         cursor = conn.cursor()
         target_links = get_links(cursor, target_links_table_name)
+        target_links.add(initial_link) if len(target_links) == 0 else None
 
         while target_links and not exit_initiated:
             pid = os.getpid()

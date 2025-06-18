@@ -1,0 +1,7 @@
+TRUNCATE TABLE
+    result_links,
+    target_links,
+    unreached_links
+RESTART IDENTITY CASCADE;
+
+select * from result_links;
